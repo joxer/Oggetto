@@ -1,0 +1,17 @@
+[package]
+name = "oggetto"
+version = "0.1.0"
+authors = ["josario <26515+joxer@users.noreply.github.com>"]
+edition = "2018"
+
+
+[dependencies]
+reed-solomon-erasure = "4.0"
+sha2 = "0.8.2"
+clap = "2.33.1"
+data-encoding = "2.2.1"
+crc32c = "0.4"
+rocksdb = "0.14.0"
+serde = "1.0"
+serde_json = "1.0"
+uuid = { version = "0.8", features = ["serde", "v5", "v4"] }
