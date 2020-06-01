@@ -8,13 +8,13 @@ use crate::chunk::{deserialize, local_chunk::LocalChunk, Chunk};
 use crate::constants::{READ_STEP, ROCKS_DB_PATH};
 use crate::error::RedundantFileError;
 
-pub struct RedudantFile {
+pub struct RedundantFile {
     pub name: String,
     pub path: String,
     pub chunks: Vec<Box<dyn Chunk>>,
 }
 
-impl serde::Serialize for RedudantFile {
+impl serde::Serialize for RedundantFile {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -28,29 +28,30 @@ impl serde::Serialize for RedudantFile {
     }
 }
 
-impl RedudantFile {
-    pub fn destruct(path: &Path) -> Result<RedudantFile, RedundantFileError> {
+impl RedundantFile {
+    pub fn destruct(path: &Path) -> Result<RedundantFile, RedundantFileError> {
         let mut f = match File::open(path) {
-            Err(_err) => panic!("couldn't open {}", path.display()),
+            Err(_err) => panic!("couldn't open"),
             Ok(file) => file,
         };
+
         let name = path.file_name().unwrap();
         let tree = path.to_str().unwrap()[0..path.to_str().unwrap().len() - name.len()].to_owned();
         let mut chunks = Vec::<Box<dyn Chunk>>::new();
         let mut position = 0;
         loop {
-            let mut buf = [0; READ_STEP];
+            let mut buf = Box::new([0; READ_STEP]);
             let n = f.read(&mut buf[..]).map_err(RedundantFileError::Io)?;
 
             let chunk = LocalChunk::build(&buf, n, position).unwrap();
-            chunks.push(Box::new(chunk));
+            chunks.push(chunk);
             if n < READ_STEP {
                 break;
             }
             position += 1;
         }
 
-        Ok(RedudantFile {
+        Ok(RedundantFile {
             name: name.to_str().unwrap().to_owned(),
             path: tree,
             chunks,
@@ -63,11 +64,19 @@ impl RedudantFile {
         }
         Ok(())
     }
+
+    pub fn full_path(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&self.path);
+        s.push('/');
+        s.push_str(&self.name);
+        s
+    }
     pub fn store(&self) -> Result<(), RedundantFileError> {
         let db = DB::open_default(ROCKS_DB_PATH).unwrap();
 
         db.put(
-            &self.name,
+            self.full_path(),
             serde_json::to_string(self).map_err(RedundantFileError::JSONError)?,
         )
         .map_err(RedundantFileError::RocksDBError)?;
@@ -76,30 +85,37 @@ impl RedudantFile {
         Ok(())
     }
 
-    pub fn restore(path: String) -> Result<RedudantFile, RedundantFileError> {
+    pub fn restore(full_path: String) -> Result<RedundantFile, RedundantFileError> {
         let db = DB::open_default(ROCKS_DB_PATH).unwrap();
-        let db_value = db.get(path).unwrap().unwrap();
-        let value: serde_json::Value =
-            serde_json::from_str(&String::from_utf8(db_value).unwrap()).unwrap();
-        let mut chunks = Vec::new();
+        match db.get(full_path) {
+            Ok(db_value) => match (db_value) {
+                Some(data_value) => {
+                    let value: serde_json::Value =
+                        serde_json::from_str(&String::from_utf8(data_value).unwrap()).unwrap();
+                    let mut chunks = Vec::new();
 
-        let j_chunks: Vec<Box<dyn Chunk>> = value
-            .get("chunks")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|x| deserialize(&x.as_str().unwrap().to_owned()))
-            .collect();
-        for i in j_chunks {
-            chunks.push(i);
+                    let j_chunks: Vec<Box<dyn Chunk>> = value
+                        .get("chunks")
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| deserialize(&x.as_str().unwrap().to_owned()))
+                        .collect();
+                    for i in j_chunks {
+                        chunks.push(i);
+                    }
+
+                    return Ok(RedundantFile {
+                        name: value.get("name").unwrap().as_str().unwrap().to_owned(),
+                        path: value.get("path").unwrap().as_str().unwrap().to_owned(),
+                        chunks,
+                    });
+                }
+                None => return Err(RedundantFileError::NoDataFound),
+            },
+            Err(error) => return Err(RedundantFileError::RocksDBError(error)),
         }
-
-        Ok(RedudantFile {
-            name: value.get("name").unwrap().as_str().unwrap().to_owned(),
-            path: value.get("path").unwrap().as_str().unwrap().to_owned(),
-            chunks,
-        })
     }
 
     pub fn rebuild(&self) -> Result<Vec<u8>, RedundantFileError> {

@@ -1,45 +1,67 @@
 extern crate clap;
-use clap::{App, Arg, SubCommand};
-use oggetto::file;
+use clap::{App, Arg};
 use std::path::Path;
 
 fn main() {
     let matches = App::new("Oggetto")
         .subcommand(
-            SubCommand::with_name("write").arg(
-                Arg::with_name("file")
-                    .short("f")
+            App::new("write").arg(
+                Arg::with_name("FILE")
+                    .index(1)
                     .required(true)
                     .help("file to write to rocksdb"),
             ),
         )
         .subcommand(
-            SubCommand::with_name("read")
-                .arg(Arg::with_name("file").short("f").help("file to read")),
+            App::new("read").arg(
+                Arg::with_name("FILE")
+                    .index(1)
+                    .required(true)
+                    .help("file to read"),
+            ),
         )
         .get_matches();
-    if let Some(matches) = matches.subcommand_matches("write") {
-        let input = matches.value_of("input").unwrap();
-        let path = Path::new(input);
-        let file = file::RedudantFile::destruct(path).unwrap();
-        let file_r = file
-            .rebuild()
-            .unwrap()
-            .iter()
-            .map(|&c| c as char)
-            .collect::<String>();
-        println!("{}", file_r);
-        file.store().unwrap();
+    if let Some(ref matches) = matches.subcommand_matches("write") {
+        match matches.value_of("FILE") {
+            Some(input) => {
+                let path = Path::new(input);
+
+                let ret = oggetto::redundant_file::RedundantFile::destruct(path).unwrap();
+                let file_r = ret
+                    .rebuild()
+                    .unwrap()
+                    .iter()
+                    .map(|&c| c as char)
+                    .collect::<String>();
+                println!("{}", file_r);
+                ret.store().unwrap();
+            }
+            None => {
+                println!("no file specified");
+            }
+        }
     }
-    if let Some(matches) = matches.subcommand_matches("read") {
-        let input = matches.value_of("input").unwrap();
-        let file = file::RedudantFile::restore(input.to_owned()).unwrap();
-        let file_r = file
-            .rebuild()
-            .unwrap()
-            .iter()
-            .map(|&c| c as char)
-            .collect::<String>();
-        println!("{}", file_r);
+    if let Some(ref matches) = matches.subcommand_matches("read") {
+        match matches.value_of("FILE") {
+            Some(input) => {
+                match oggetto::redundant_file::RedundantFile::restore(input.to_owned()) {
+                    Ok(ret) => {
+                        let file_r = ret
+                            .rebuild()
+                            .unwrap()
+                            .iter()
+                            .map(|&c| c as char)
+                            .collect::<String>();
+                        println!("{}", file_r);
+                    }
+                    Err(error) => {
+                        println!("{:?}", error);
+                    }
+                }
+            }
+            None => {
+                println!("no file specified");
+            }
+        }
     }
 }

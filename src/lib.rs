@@ -1,4 +1,3 @@
-#![feature(try_trait)]
 extern crate crc32c;
 extern crate data_encoding;
 extern crate reed_solomon_erasure;
@@ -10,4 +9,4 @@ extern crate uuid;
 pub mod chunk;
 pub mod constants;
 pub mod error;
-pub mod file;
+pub mod redundant_file;

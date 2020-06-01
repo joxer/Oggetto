@@ -1,6 +1,7 @@
 use crate::error::RedundantFileError;
 use std::fmt::Debug;
 pub mod local_chunk;
+
 pub trait Chunk: Debug {
     fn position(&self) -> u32;
     fn chunk_size(&self) -> usize;

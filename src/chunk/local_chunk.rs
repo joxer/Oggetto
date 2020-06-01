@@ -60,11 +60,9 @@ impl Chunk for LocalChunk {
             .iter()
             .map(|x| Some(x.to_owned()))
             .collect();
-
         for c in 0..chunks_sliced.len() {
             if crc32c(&chunks_sliced[c].as_ref().unwrap()) != self.chunks_crc[c] {
                 chunks_sliced[c] = None;
-                println!("{} is none", c);
             }
         }
         r.reconstruct(&mut chunks_sliced)
@@ -134,7 +132,7 @@ impl LocalChunk {
         buf: &[u8; READ_STEP],
         read_bytes: usize,
         position: u32,
-    ) -> Result<LocalChunk, RedundantFileError> {
+    ) -> Result<Box<dyn Chunk>, RedundantFileError> {
         let r = ReedSolomon::new(CHUNKS, PARITY).unwrap();
 
         let sliced_hash: [u8; 32] = Sha256::digest(&buf[0..read_bytes]).into();
@@ -146,15 +144,15 @@ impl LocalChunk {
             .map(|x| Vec::from(&buf[(READ_STEP / CHUNKS * x)..(READ_STEP / CHUNKS * (x + 1))]))
             .collect();
         let mut crcs = Vec::<u32>::new();
-        for v in &vecs {
-            crcs.push(crc32c(&v));
-        }
         for _p in 0..PARITY {
             vecs.push([0u8; READ_STEP / CHUNKS].to_vec());
         }
         r.encode(&mut vecs).unwrap();
+        for v in &vecs {
+            crcs.push(crc32c(&v));
+        }
 
-        Ok(LocalChunk {
+        Ok(Box::new(LocalChunk {
             uuid: Uuid::new_v4(),
             position,
             chunk_n: CHUNKS,
@@ -163,7 +161,7 @@ impl LocalChunk {
             chunks: vecs,
             hash: hash_string,
             chunks_crc: crcs,
-        })
+        }))
     }
 
     fn generate_names(&self) -> Vec<String> {
