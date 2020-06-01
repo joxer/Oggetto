@@ -1,4 +1,3 @@
-
 pub const PARITY: usize = 4;
 pub const CHUNKS: usize = 8;
 pub const READ_STEP: usize = 1024 * 1024 * CHUNKS;

@@ -1,12 +1,12 @@
-use crate::rocksdb::{DB};
-use serde::ser::{ SerializeStruct, Serializer};
+use crate::rocksdb::DB;
+use serde::ser::{SerializeStruct, Serializer};
 use std::fs::File;
-use std::io::{Read};
-use std::path::{Path};
+use std::io::Read;
+use std::path::Path;
 
-use crate::chunk::{Chunk, deserialize, local_chunk::LocalChunk};
-use crate::error::{RedundantFileError};
-use crate::constants::{READ_STEP, ROCKS_DB_PATH, };
+use crate::chunk::{deserialize, local_chunk::LocalChunk, Chunk};
+use crate::constants::{READ_STEP, ROCKS_DB_PATH};
+use crate::error::RedundantFileError;
 
 pub struct RedudantFile {
     pub name: String,
@@ -31,7 +31,7 @@ impl serde::Serialize for RedudantFile {
 impl RedudantFile {
     pub fn destruct(path: &Path) -> Result<RedudantFile, RedundantFileError> {
         let mut f = match File::open(path) {
-            Err(_) => panic!("couldn't open {}", path.display()),
+            Err(_err) => panic!("couldn't open {}", path.display()),
             Ok(file) => file,
         };
         let name = path.file_name().unwrap();
@@ -65,8 +65,12 @@ impl RedudantFile {
     }
     pub fn store(&self) -> Result<(), RedundantFileError> {
         let db = DB::open_default(ROCKS_DB_PATH).unwrap();
-        
-        db.put(&self.name, serde_json::to_string(self).map_err(RedundantFileError::JSONError)?).map_err(RedundantFileError::RocksDBError)?;
+
+        db.put(
+            &self.name,
+            serde_json::to_string(self).map_err(RedundantFileError::JSONError)?,
+        )
+        .map_err(RedundantFileError::RocksDBError)?;
         self.save_chunks()?;
 
         Ok(())
@@ -94,7 +98,7 @@ impl RedudantFile {
         Ok(RedudantFile {
             name: value.get("name").unwrap().as_str().unwrap().to_owned(),
             path: value.get("path").unwrap().as_str().unwrap().to_owned(),
-            chunks: chunks,
+            chunks,
         })
     }
 

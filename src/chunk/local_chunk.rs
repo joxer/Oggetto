@@ -3,15 +3,15 @@ use crate::data_encoding::HEXUPPER;
 use crate::reed_solomon_erasure::galois_8::ReedSolomon;
 use crate::sha2::{Digest, Sha256};
 use crate::uuid::Uuid;
-use serde::ser::{ SerializeStruct, Serializer};
+use serde::ser::{SerializeStruct, Serializer};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{ PathBuf};
+use std::path::PathBuf;
 
+use crate::chunk::Chunk;
+use crate::constants::{CHUNKS, DIRECTORIES, PARITY, READ_STEP};
 use crate::error::RedundantFileError;
-use crate::chunk::{Chunk};
-use crate::constants::{DIRECTORIES, READ_STEP, PARITY, CHUNKS};
 
 #[derive(Debug)]
 pub struct LocalChunk {
@@ -61,7 +61,7 @@ impl Chunk for LocalChunk {
             .map(|x| Some(x.to_owned()))
             .collect();
 
-        for c in 0..self.chunk_n {
+        for c in 0..chunks_sliced.len() {
             if crc32c(&chunks_sliced[c].as_ref().unwrap()) != self.chunks_crc[c] {
                 chunks_sliced[c] = None;
                 println!("{} is none", c);

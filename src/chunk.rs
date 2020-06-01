@@ -10,7 +10,7 @@ pub trait Chunk: Debug {
     fn save_chunks(&self) -> Result<(), RedundantFileError>;
 }
 
-pub fn deserialize<'a>(obj: &'a String) -> Box<dyn Chunk> {
+pub fn deserialize(obj: &str) -> Box<dyn Chunk> {
     let json: serde_json::Value = serde_json::from_str(obj).unwrap();
     match json.get("type").unwrap().as_str().unwrap() {
         "LocalChunk" => local_chunk::LocalChunk::deserialize_json(json),

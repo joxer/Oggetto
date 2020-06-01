@@ -41,7 +41,5 @@ fn main() {
             .map(|&c| c as char)
             .collect::<String>();
         println!("{}", file_r);
-
-        
     }
 }
