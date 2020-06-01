@@ -52,7 +52,7 @@ impl Chunk for LocalChunk {
     fn chunk_size(&self) -> usize {
         self.chunk_size
     }
-
+    #[allow(clippy::needless_range_loop)]
     fn rebuild(&self) -> Result<Vec<u8>, RedundantFileError> {
         let r: ReedSolomon = ReedSolomon::new(self.chunk_n, self.parity_n).unwrap();
 
