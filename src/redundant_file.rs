@@ -87,10 +87,10 @@ impl RedundantFile {
         }
         let mut chunks_8: [Option<Box<Chunk>>; 8] = [None;8];
         for n in 0..chunks.len(){
-            chunks_8[n] = Some(chunks[n]);
+            chunks_8[n] = Some(chunks.remove(n));
         }
 
-        let name_u8 = [0u8;256];
+        let mut name_u8 = [0u8;256];
         for (n,x) in file.chars().enumerate() {
             name_u8[n] = x as u8;
         }

@@ -4,7 +4,7 @@ use crate::uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
 #[repr(align(32))]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Block {
     pub id: u128,
     pub position: usize,

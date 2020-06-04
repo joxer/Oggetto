@@ -17,18 +17,17 @@ use crate::error::RedundantFileError;
 use crate::block::Block;
 
 #[repr(align(32))]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Copy)]
 pub struct Chunk {
     pub id: u128,
     pub position: u32,
     pub chunk_n: usize,
     pub parity_n: usize,
     pub chunk_size: usize,
-    #[serde(serialize_with = "block_id_serialize")]
     pub chunks: Vec<Box<Block>>,
     pub hash: [u8; 32],
 }
-
+/*
 fn block_id_serialize<S>(blocks: &Vec<Box<Block>>, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -38,7 +37,7 @@ where
         seq.serialize_element(&b.id.to_le_bytes());
     }
     seq.end()
-}
+}*/
 /*
 impl Chunk  {
     fn position(&self) -> u32 {
@@ -108,7 +107,7 @@ impl Chunk {
             .map(|(pos, data)| {
                 let data_crc = crc32c(&data);
                 Box::new(Block {
-                    id: Uuid::new_v4(),
+                    id: Uuid::new_v4().as_u128(),
                     position: pos,
                     data: data.clone().into_boxed_slice(),
                     crc: data_crc,
@@ -116,7 +115,7 @@ impl Chunk {
             })
             .collect();
         Ok(Box::new(Chunk {
-            uuid: Uuid::new_v4(),
+            id: Uuid::new_v4().as_u128(),
             position,
             chunk_n: CHUNKS,
             parity_n: PARITY,
