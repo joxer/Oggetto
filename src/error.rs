@@ -7,3 +7,8 @@ pub enum RedundantFileError {
     RocksDBError(rocksdb::Error),
     NoDataFound,
 }
+
+#[derive(Debug)]
+pub enum BlockError {}
+
+pub enum VolumeError {}
