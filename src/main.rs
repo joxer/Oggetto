@@ -1,7 +1,9 @@
 extern crate clap;
 use clap::{App, Arg};
-use std::path::Path;
 
+use oggetto::redundant_file::RedundantFile;
+use oggetto::volume::BigFileVolume;
+use std::path::Path;
 fn main() {
     let matches = App::new("Oggetto")
         .subcommand(
@@ -37,4 +39,11 @@ fn main() {
             }
         }
     }
+    //let mut file = std::fs::File::open("tests/lenna.png").unwrap();
+    let mut volume = BigFileVolume::default();
+    let id = volume.destruct_from_file("tests/salinger.mp3").unwrap();
+    let id = volume.restruct_to_file(id,"tests/salinger_r.mp3").unwrap();
+
+    
+    
 }

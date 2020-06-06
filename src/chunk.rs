@@ -3,30 +3,31 @@ use crate::data_encoding::HEXUPPER;
 use crate::reed_solomon_erasure::galois_8::ReedSolomon;
 use crate::serde::ser::SerializeSeq;
 use crate::serde::Serializer;
-use crate::sha2::{Digest, Sha256};
+
 use crate::uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-
-use crate::constants::{CHUNKS, PARITY, READ_STEP};
-use crate::error::RedundantFileError;
+use crate::UUID;
+use crate::volume::Volume;
+use crate::constants::{BLOCKS, BLOCK_SIZE, PARITY, READ_STEP};
+use crate::error::{RedundantFileError,VolumeError};
 
 use crate::block::Block;
 
-#[repr(align(32))]
-#[derive(Debug, Serialize, Deserialize, Copy)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub struct Chunk {
     pub id: u128,
     pub position: u32,
     pub chunk_n: usize,
     pub parity_n: usize,
     pub chunk_size: usize,
-    pub chunks: Vec<Box<Block>>,
-    pub hash: [u8; 32],
+    pub blocks: [u128; BLOCKS + PARITY], //[Block;BLOCKS+PARITY],
+    pub hash: u32,
 }
+
 /*
 fn block_id_serialize<S>(blocks: &Vec<Box<Block>>, s: S) -> Result<S::Ok, S::Error>
 where
@@ -38,22 +39,47 @@ where
     }
     seq.end()
 }*/
-/*
-impl Chunk  {
-    fn position(&self) -> u32 {
-        self.position
+
+impl Chunk {
+    
+    pub fn rebuild<T,W>(id: UUID, data_manager: &T, writer: &mut W) -> Result<(),VolumeError> where T: Volume, W: std::io::Write {
+        
+        
+        let chunk: Box<Chunk> = data_manager.get_chunk(id)?;
+        chunk.inner_rebuild(data_manager, writer);
+        Ok(())
     }
 
-    fn chunk_size(&self) -> usize {
-        self.chunk_size
+    pub fn inner_rebuild<T,W>(&self, data_manager: &T, writer: &mut W) -> Result<(),VolumeError> where T: Volume, W: std::io::Write {
+
+        let blocks : Vec<Box<Block>> = self.blocks.iter().map(|b|
+            match data_manager.get_block(*b) {
+                Ok(data) => {
+                    data
+                },
+                Err(err) => {
+                    println!("{} missing block", *b);
+                    Box::new(Block::empty())
+                }
+
+            }
+        ).collect();
+
+        let data = Chunk::rebuild_data(self.position, self.chunk_size, self.chunk_n, self.parity_n, self.hash, blocks).unwrap();
+        
+        writer.write(&data[..]);
+        
+        Ok(())
     }
+
+    
     #[allow(clippy::needless_range_loop)]
-    fn rebuild(&self) -> Result<Vec<u8>, RedundantFileError> {
-        let r: ReedSolomon = ReedSolomon::new(self.chunk_n, self.parity_n).unwrap();
+    fn rebuild_data(position: u32, chunk_size: usize, chunk_n: usize, parity_n:usize, hash: u32, blocks: Vec<Box<Block>>) -> Result<Vec<u8>, RedundantFileError> {
+        let r: ReedSolomon = ReedSolomon::new(chunk_n, parity_n).unwrap();
 
-        let mut chunks_sliced: Vec<_> = self.chunks[0..(self.chunk_n + self.parity_n)]
+        let mut chunks_sliced: Vec<_> = blocks[0..(chunk_n + parity_n)]
             .iter()
-            .map(|x| x.inner_data())
+            .map(|x| x.inner_data_as_vec())
             .collect();
 
         r.reconstruct(&mut chunks_sliced)
@@ -64,64 +90,95 @@ impl Chunk  {
             vec.extend(c.unwrap());
         }
 
-        let sliced_hash: [u8; 32] = Sha256::digest(&vec[0..self.chunk_size()]).into();
+        let sliced_hash: u32 = crc32c(&vec[0..chunk_size]);
 
-        let hash_string = HEXUPPER.encode(&sliced_hash);
-        if hash_string != self.hash {
+
+        if sliced_hash != hash {
+            let hash_string = format!("{}", sliced_hash);
+            let hash_chunk = format!("{}", hash);
             return Err(RedundantFileError::MismatchHash(
-                self.position(),
+                position,
                 hash_string,
-                self.hash.clone(),
+                hash_chunk,
             ));
         }
 
-        Ok(Vec::from(&vec[0..self.chunk_size]))
+        Ok(Vec::from(&vec[0..chunk_size]))
     }
 
-    fn serialize(&self) -> String {
-        serde_json::to_string(&self).unwrap()
-    }
-}*/
 
-impl Chunk {
+    pub fn empty() -> Chunk {
+        Chunk {
+            id: 0,
+            position: 0,
+            chunk_n: 0,
+            parity_n: 0,
+            chunk_size: 0,
+            blocks: [0u128; BLOCKS + PARITY],
+            hash: 0,
+        }
+    }
     pub fn build(
         buf: &[u8; READ_STEP],
         read_bytes: usize,
         position: u32,
         n_chunks: usize,
-    ) -> Result<Box<Chunk>, RedundantFileError> {
-        let r = ReedSolomon::new(CHUNKS, PARITY).unwrap();
+    ) -> Result<(Box<Chunk>, Box<Vec<Block>>), RedundantFileError> {
+        let r = ReedSolomon::new(BLOCKS, PARITY).unwrap();
 
-        let hash_slice: [u8; 32] = Sha256::digest(&buf[0..read_bytes]).into();
+        let hash_slice: u32 = crc32c(&buf[0..read_bytes]);
 
         let _length = buf.len();
-        let mut vecs: Vec<Vec<u8>> = (0..n_chunks)
-            .map(|x| {
-                Vec::from(&buf[(read_bytes / n_chunks * x)..(read_bytes / n_chunks * (x + 1))])
-            })
-            .collect();
+        let mut vecs: Vec<Vec<u8>> = Vec::new();
+
+        let mut start = 0;
+        while start < read_bytes {
+            let mut v = Vec::from(&buf[start..std::cmp::min(start + BLOCK_SIZE, read_bytes)]);
+            if v.len() < BLOCK_SIZE {
+                v.append(&mut vec![0u8; BLOCK_SIZE - v.len()]);
+            }
+            vecs.push(v);
+            start += BLOCK_SIZE;
+        }
+        for i in 0..(PARITY + (BLOCKS-vecs.len())) {
+            let v: Vec<u8> = ([0u8; BLOCK_SIZE]).to_vec();
+            vecs.push(v);
+        }
+
         r.encode(&mut vecs).unwrap();
-        let blocked_chunks = vecs
+        let blocked_chunks: Vec<Block> = vecs
             .iter()
             .enumerate()
             .map(|(pos, data)| {
+                let mut array = [0u8; BLOCK_SIZE];
+                for i in 0..data.len() {
+                    array[i] = data[i]
+                }
                 let data_crc = crc32c(&data);
-                Box::new(Block {
+                Block {
                     id: Uuid::new_v4().as_u128(),
                     position: pos,
-                    data: data.clone().into_boxed_slice(),
+                    data: array,
                     crc: data_crc,
-                })
+                }
             })
             .collect();
-        Ok(Box::new(Chunk {
-            id: Uuid::new_v4().as_u128(),
-            position,
-            chunk_n: CHUNKS,
-            parity_n: PARITY,
-            chunk_size: read_bytes,
-            chunks: blocked_chunks,
-            hash: hash_slice,
-        }))
+        let mut blocked_array = [0u128; BLOCKS + PARITY];
+        for i in 0..blocked_chunks.len() {
+            blocked_array[i] = blocked_chunks[i].id;
+        }
+
+        Ok((
+            Box::new(Chunk {
+                id: Uuid::new_v4().as_u128(),
+                position,
+                chunk_n: BLOCKS,
+                parity_n: PARITY,
+                chunk_size: read_bytes,
+                blocks: blocked_array,
+                hash: hash_slice,
+            }),
+            Box::new(blocked_chunks),
+        ))
     }
 }

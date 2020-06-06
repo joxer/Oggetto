@@ -4,11 +4,14 @@ pub enum RedundantFileError {
     MismatchHash(u32, String, String),
     RecostructError(reed_solomon_erasure::Error),
     JSONError(serde_json::Error),
-    RocksDBError(rocksdb::Error),
     NoDataFound,
 }
 
 #[derive(Debug)]
 pub enum BlockError {}
 
-pub enum VolumeError {}
+#[derive(Debug)]
+pub enum VolumeError {
+    GeneralError,
+    NoDataFound,
+}
