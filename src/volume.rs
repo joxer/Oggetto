@@ -2,112 +2,166 @@ use crate::block::Block;
 use crate::chunk::Chunk;
 use crate::error::{RedundantFileError, VolumeError};
 use crate::redundant_file::RedundantFile;
-
-use crate::uuid::Uuid;
-use serde::ser::{SerializeSeq, Serializer};
-use std::fs::File;
-use std::io::{Read};
-use std::path::Path;
-use crate::UUID;
+use crate::volume_manager::{FileVolumeManager,FileVector};
 use crate::constants::FIRST_INDIRECTION_SIZE;
 use crate::constants::{BLOCKS, READ_STEP};
 use crate::serde::{Deserialize, Serialize};
+use crate::uuid::Uuid;
+use crate::UUID;
 use rand::Rng;
+use serde::ser::{SerializeSeq, Serializer};
 use std::collections::HashMap;
-
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use bincode;
 pub trait Volume {
     fn get_redundant_file(&self, id: UUID) -> Result<Box<RedundantFile>, VolumeError>;
-    fn get_chunk(&self, id: UUID) -> Result<Box<Chunk>,VolumeError>;
-    fn get_block(&self, id: UUID) -> Result<Box<Block>,VolumeError>;
+    fn get_chunk(&self, id: UUID) -> Result<Box<Chunk>, VolumeError>;
+    fn get_block(&self, id: UUID) -> Result<Box<Block>, VolumeError>;
     fn destruct_from_file(&mut self, file_name: &str) -> Result<UUID, VolumeError>;
-    fn restruct_to_file(&mut self,id: UUID, file_name: &str) -> Result<(), VolumeError>;
+    fn restruct_to_file(&mut self, id: UUID, file_name: &str) -> Result<(), VolumeError>;
 }
 
 pub struct BigFileVolume {
     /*
         first 10 megs are for redundant files structure
     */
-    path: String,
-    pub files: HashMap<UUID,Box<RedundantFile>>,
-    pub chunks: HashMap<UUID,Box<Chunk>>,
-    pub blocks: HashMap<UUID,Box<Block>>,
+    meta_data: Option<FileVolumeManager>,
+    block_file: String,
+//    pub files: BigFileVolumeHashMap<Box<RedundantFile>>,
+//    pub chunks: BigFileVolumeHashMap<Box<Chunk>>,
+//    pub blocks: BigFileVolumeHashMap<Box<Block>>,
+}
 
+pub struct BigFileVolumeHashMap<T> {
+    hashmap: HashMap<UUID, T>,
+}
+
+impl<T> BigFileVolumeHashMap<T> {
+    pub fn new() -> BigFileVolumeHashMap<T> {
+        BigFileVolumeHashMap {
+            hashmap: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, id: UUID, value: T) -> Option<T> {
+        self.hashmap.insert(id, value)
+    }
+
+    pub fn get(&self, id: &UUID) -> Option<&T> {
+        self.hashmap.get(&id)
+    }
 }
 
 impl BigFileVolume {
-
-    pub fn default() -> Box<dyn Volume>{
-        return Box::new(
-            BigFileVolume{
-                path: ".".to_owned(),
-                files: HashMap::new(),
-                chunks: HashMap::new(),
-                blocks: HashMap::new(),
-            }
-        )
+    pub fn default() -> BigFileVolume {
+        return BigFileVolume {
+            meta_data: None,
+            block_file: "block_file.block".to_owned(),
+      //      files: BigFileVolumeHashMap::new(),
+      //      chunks: BigFileVolumeHashMap::new(),
+      //      blocks: BigFileVolumeHashMap::new(),
+        };
     }
 
+    pub fn init(path: &str) -> BigFileVolume{
+        let fvm = match FileVolumeManager::open(path) {
+            Ok(fvm) => fvm,
+            Err(_) => FileVolumeManager::init(path).unwrap()
+        };
 
-    pub fn destruct<T>(&mut self, file: &str, reader: &mut T) -> Result<UUID , VolumeError> where T: std::io::Read{
-        let (file,chunks,blocks) = RedundantFile::destruct(file, reader).unwrap();
-        let id = file.id;
-        self.files.insert(file.id, file);
+        let mut bfv = BigFileVolume::default();
+
+        bfv.meta_data = Some(fvm);
+        
+        bfv        
+    }
+
+    pub fn destruct<T>(&mut self, file: &str, reader: &mut T) -> Result<UUID, VolumeError>
+    where
+        T: std::io::Read,
+    {
+        let (file, chunks, blocks) = RedundantFile::destruct(file, reader).unwrap();
+        println!("{:#?}", bincode::serialized_size(&file).unwrap());
+//        let id = file.id;
+ //       let pos = self.meta_data.as_mut().unwrap().allocate_file(id);
+ //       self.meta_data.as_mut().unwrap().save_file(file);
+
+        /*self.files.insert(file.id, file);
         for c in chunks.iter() {
-            self.chunks.insert(c.id,Box::new(*c));
+            self.chunks.insert(c.id, Box::new(*c));
         }
         for b in blocks.iter() {
-            self.blocks.insert(b.id,Box::new(*b));
+            self.blocks.insert(b.id, Box::new(*b));
         }
-        save_file(file);
-        save_chunks(chunks);
-        save_blocks(blocks);
+        */
+        //    self.save_file(file);
+        //    self.save_chunks(chunks);
+        //    self.save_blocks(blocks);
+
         
-        Ok(id)
+
+        Ok(file.id)
     }
 
-    pub fn restruct<T>(&mut self, id: UUID, writer: &mut T) -> Result<() , VolumeError> where T: std::io::Write{
-        let file = RedundantFile::rebuild(id,  self, writer);
+    /*    fn save_file(&mut self, file: Box<RedundantFile>) {
+        self.write_to_file_table(&file);
+        self.write_file_block();
+    }
+
+    fn save_chunks(&mut self, chunks: Box<Vec<Chunk>>) {
+        self.write_chunks_to_file_table(&chunks);
+        self.write_chunks_block(&chunks);
+    }
+
+    fn save_blocks(&mut self, blocks: Box<Vec<Block>>) {
+        self.write_blocks_to_file_table(&blocks);
+        self.write_blocks_to_second_file(&blocks)
+    }
+
+    fn write_to_file_table(&mut self,file: Box<RedundantFile>) -> Result<(),VolumeError> {
+
+    }
+    */
+
+    pub fn restruct<T>(&mut self, id: UUID, writer: &mut T) -> Result<(), VolumeError>
+    where
+        T: std::io::Write,
+    {
+        let file = RedundantFile::rebuild(id, self, writer);
         writer.flush();
         Ok(())
     }
 }
 
 impl Volume for BigFileVolume {
-
     fn get_redundant_file(&self, id: UUID) -> Result<Box<RedundantFile>, VolumeError> {
-        let file = self.files.get(&id).unwrap();
-        Ok(file.clone())
+    //    let file = self.files.get(&id).unwrap();
+    //    Ok(file.clone())
+    Err(VolumeError::GeneralError)
     }
-    fn get_chunk(&self, id: UUID) -> Result<Box<Chunk>,VolumeError> {
-        let chunk = self.chunks.get(&id).unwrap();
-        Ok(chunk.clone())
-        
-
+    fn get_chunk(&self, id: UUID) -> Result<Box<Chunk>, VolumeError> {
+        //let chunk = self.chunks.get(&id).unwrap();
+        //Ok(chunk.clone())
+        Err(VolumeError::GeneralError)
     }
-    fn get_block(&self, id: UUID) -> Result<Box<Block>,VolumeError>{
-        
-        let block = self.blocks.get(&id).unwrap();
-        Ok(block.clone())
-        
-
+    fn get_block(&self, id: UUID) -> Result<Box<Block>, VolumeError> {
+        //let block = self.blocks.get(&id).unwrap();
+        //Ok(block.clone())
+        Err(VolumeError::GeneralError)
     }
-   
 
-
-    fn destruct_from_file(&mut self, file_name: &str) -> Result<UUID, VolumeError>{
-
+    fn destruct_from_file(&mut self, file_name: &str) -> Result<UUID, VolumeError> {
         let mut file = std::fs::File::open(file_name).unwrap();
 
         self.destruct(file_name, &mut file)
     }
 
-
-    fn restruct_to_file(&mut self, id: UUID, file_name: &str) -> Result<(), VolumeError>{
-
+    fn restruct_to_file(&mut self, id: UUID, file_name: &str) -> Result<(), VolumeError> {
         let mut file = std::fs::File::create(file_name).unwrap();
 
         self.restruct(id, &mut file);
         Ok(())
     }
-
 }

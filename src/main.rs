@@ -1,8 +1,11 @@
 extern crate clap;
 use clap::{App, Arg};
 
-use oggetto::redundant_file::RedundantFile;
-use oggetto::volume::BigFileVolume;
+use oggetto::block::Block;
+use oggetto::chunk::Chunk;
+use oggetto::redundant_file::{ChunkIndirection,RedundantFile};
+use oggetto::volume::{BigFileVolume,Volume};
+use oggetto::volume_manager::FileVolumeManager;
 use std::path::Path;
 fn main() {
     let matches = App::new("Oggetto")
@@ -39,11 +42,28 @@ fn main() {
             }
         }
     }
-    //let mut file = std::fs::File::open("tests/lenna.png").unwrap();
-    let mut volume = BigFileVolume::default();
-    let id = volume.destruct_from_file("tests/salinger.mp3").unwrap();
-    let id = volume.restruct_to_file(id,"tests/salinger_r.mp3").unwrap();
-
+    let mut file = std::fs::File::open("tests/lenna.png").unwrap();
+     let mut volume = BigFileVolume::default();
+    let id = volume.destruct_from_file("tests/lenna.png").unwrap();
+    //let id = volume.restruct_to_file(id,"tests/salinger_r.mp3").unwrap();
     
+    println!("{}", std::mem::size_of::<RedundantFile>());
+    println!("{}", RedundantFile::size());
+     println!("{}", std::mem::size_of::<Chunk>());
+    println!("{}", std::mem::size_of::<Block>());
+    let ci = ChunkIndirection { 
+        chunks: [0u128; 32]
+    };
+    let r = RedundantFile {
+        id: 0u128,
+        name: ([99u8;256].to_vec().into_boxed_slice()),
+        chunks_fi: Box::new(ci),
+        chunks_si: Box::new([ci;32 ],
+        
+    
+    )};
+    println!("{:#?}", bincode::serialized_size(&r).unwrap());
+    
+    //FileVolumeManager::init("volume.bin");
     
 }

@@ -15,6 +15,6 @@ pub mod constants;
 pub mod error;
 pub mod redundant_file;
 pub mod volume;
-
+pub mod volume_manager;
 
 type UUID = u128;

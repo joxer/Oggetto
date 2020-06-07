@@ -14,4 +14,5 @@ pub enum BlockError {}
 pub enum VolumeError {
     GeneralError,
     NoDataFound,
+    IoError(std::io::Error),
 }

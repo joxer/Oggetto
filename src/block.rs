@@ -4,7 +4,7 @@ use crate::uuid::Uuid;
 use serde::de::Deserializer;
 use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug,Formatter, Result as fmtResult};
+use std::fmt::{Debug, Formatter, Result as fmtResult};
 #[derive(Serialize, Deserialize, Copy, Clone)]
 pub struct Block {
     pub id: u128,
@@ -19,9 +19,9 @@ pub struct Block {
 impl Debug for Block {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmtResult {
         f.debug_struct("Block")
-         .field("id", &self.id)
-         .field("position", &self.position)
-         .finish()
+            .field("id", &self.id)
+            .field("position", &self.position)
+            .finish()
     }
 }
 
@@ -59,9 +59,7 @@ impl Block {
         }
     }
 
-
     pub fn inner_data_as_vec(&self) -> Option<Vec<u8>> {
-
         if self.id == 0 {
             return None;
         }

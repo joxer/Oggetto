@@ -4,16 +4,16 @@ use crate::reed_solomon_erasure::galois_8::ReedSolomon;
 use crate::serde::ser::SerializeSeq;
 use crate::serde::Serializer;
 
+use crate::constants::{BLOCKS, BLOCK_SIZE, PARITY, READ_STEP};
+use crate::error::{RedundantFileError, VolumeError};
 use crate::uuid::Uuid;
+use crate::volume::Volume;
+use crate::UUID;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use crate::UUID;
-use crate::volume::Volume;
-use crate::constants::{BLOCKS, BLOCK_SIZE, PARITY, READ_STEP};
-use crate::error::{RedundantFileError,VolumeError};
 
 use crate::block::Block;
 
@@ -24,7 +24,7 @@ pub struct Chunk {
     pub chunk_n: usize,
     pub parity_n: usize,
     pub chunk_size: usize,
-    pub blocks: [u128; BLOCKS + PARITY], //[Block;BLOCKS+PARITY],
+    pub blocks: [UUID; BLOCKS + PARITY], //[Block;BLOCKS+PARITY],
     pub hash: u32,
 }
 
@@ -41,40 +41,57 @@ where
 }*/
 
 impl Chunk {
-    
-    pub fn rebuild<T,W>(id: UUID, data_manager: &T, writer: &mut W) -> Result<(),VolumeError> where T: Volume, W: std::io::Write {
-        
-        
+    pub fn rebuild<T, W>(id: UUID, data_manager: &T, writer: &mut W) -> Result<(), VolumeError>
+    where
+        T: Volume,
+        W: std::io::Write,
+    {
         let chunk: Box<Chunk> = data_manager.get_chunk(id)?;
         chunk.inner_rebuild(data_manager, writer);
         Ok(())
     }
 
-    pub fn inner_rebuild<T,W>(&self, data_manager: &T, writer: &mut W) -> Result<(),VolumeError> where T: Volume, W: std::io::Write {
-
-        let blocks : Vec<Box<Block>> = self.blocks.iter().map(|b|
-            match data_manager.get_block(*b) {
-                Ok(data) => {
-                    data
-                },
+    pub fn inner_rebuild<T, W>(&self, data_manager: &T, writer: &mut W) -> Result<(), VolumeError>
+    where
+        T: Volume,
+        W: std::io::Write,
+    {
+        let blocks: Vec<Box<Block>> = self
+            .blocks
+            .iter()
+            .map(|b| match data_manager.get_block(*b) {
+                Ok(data) => data,
                 Err(err) => {
                     println!("{} missing block", *b);
                     Box::new(Block::empty())
                 }
+            })
+            .collect();
 
-            }
-        ).collect();
+        let data = Chunk::rebuild_data(
+            self.position,
+            self.chunk_size,
+            self.chunk_n,
+            self.parity_n,
+            self.hash,
+            blocks,
+        )
+        .unwrap();
 
-        let data = Chunk::rebuild_data(self.position, self.chunk_size, self.chunk_n, self.parity_n, self.hash, blocks).unwrap();
-        
         writer.write(&data[..]);
-        
+
         Ok(())
     }
 
-    
     #[allow(clippy::needless_range_loop)]
-    fn rebuild_data(position: u32, chunk_size: usize, chunk_n: usize, parity_n:usize, hash: u32, blocks: Vec<Box<Block>>) -> Result<Vec<u8>, RedundantFileError> {
+    fn rebuild_data(
+        position: u32,
+        chunk_size: usize,
+        chunk_n: usize,
+        parity_n: usize,
+        hash: u32,
+        blocks: Vec<Box<Block>>,
+    ) -> Result<Vec<u8>, RedundantFileError> {
         let r: ReedSolomon = ReedSolomon::new(chunk_n, parity_n).unwrap();
 
         let mut chunks_sliced: Vec<_> = blocks[0..(chunk_n + parity_n)]
@@ -92,7 +109,6 @@ impl Chunk {
 
         let sliced_hash: u32 = crc32c(&vec[0..chunk_size]);
 
-
         if sliced_hash != hash {
             let hash_string = format!("{}", sliced_hash);
             let hash_chunk = format!("{}", hash);
@@ -105,7 +121,6 @@ impl Chunk {
 
         Ok(Vec::from(&vec[0..chunk_size]))
     }
-
 
     pub fn empty() -> Chunk {
         Chunk {
@@ -140,7 +155,7 @@ impl Chunk {
             vecs.push(v);
             start += BLOCK_SIZE;
         }
-        for i in 0..(PARITY + (BLOCKS-vecs.len())) {
+        for i in 0..(PARITY + (BLOCKS - vecs.len())) {
             let v: Vec<u8> = ([0u8; BLOCK_SIZE]).to_vec();
             vecs.push(v);
         }
