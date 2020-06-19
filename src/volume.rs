@@ -1,20 +1,11 @@
 use crate::block::Block;
 use crate::chunk::Chunk;
-use crate::constants::FIRST_INDIRECTION_SIZE;
-use crate::constants::{BLOCKS, READ_STEP};
-use crate::error::{RedundantFileError, VolumeError};
+use crate::error::{ VolumeError};
 use crate::redundant_file::RedundantFile;
-use crate::serde::{Deserialize, Serialize};
-use crate::uuid::Uuid;
-use crate::volume_manager::{FileVector, FileVolumeManager};
+use crate::volume_manager::{FileVolumeManager};
 use crate::UUID;
-use bincode;
-use rand::Rng;
-use serde::ser::{SerializeSeq, Serializer};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+
 pub trait Volume {
     fn get_redundant_file(&self, id: UUID) -> Result<Box<RedundantFile>, VolumeError>;
     fn get_chunk(&self, id: UUID) -> Result<Box<Chunk>, VolumeError>;
@@ -24,8 +15,8 @@ pub trait Volume {
 }
 
 pub struct BigFileVolume {
-    meta_data: Option<FileVolumeManager>,
-    block_file: String,
+    meta_data: Option<FileVolumeManager::MetaData>,
+    block_file: Option<FileVolumeManager::BlockFile>,
 }
 
 pub struct BigFileVolumeHashMap<T> {
