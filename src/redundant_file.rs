@@ -1,7 +1,7 @@
 use crate::block::Block;
 use crate::chunk::Chunk;
 use crate::constants::FIRST_INDIRECTION_SIZE;
-use crate::constants::{BLOCKS, READ_STEP,FILENAME_SIZE};
+use crate::constants::{BLOCKS, FILENAME_SIZE, READ_STEP};
 use crate::error::RedundantFileError;
 use crate::error::VolumeError;
 use crate::serde::{Deserialize, Serialize};
@@ -25,8 +25,6 @@ pub struct RedundantFile {
                                                                     //pub chunks_u16: Box<[Box<[Chunk;16]>;16]>
 }
 
-
-
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ChunkIndirection {
     pub chunks: [UUID; FIRST_INDIRECTION_SIZE],
@@ -37,6 +35,20 @@ impl Default for ChunkIndirection {
         return ChunkIndirection {
             chunks: [0u128; FIRST_INDIRECTION_SIZE],
         };
+    }
+}
+
+impl ChunkIndirection {
+    fn to_bin_vec(self) -> Vec<u8> {
+        let vecs_uuid: Vec<u128> = self.chunks.to_vec();
+        let mut vecs_splitted = Vec::new();
+        for v in vecs_uuid {
+            for i in 0..(128 / 8) {
+                vecs_splitted.push((v >> i * 8) as u8 & 0b11111111)
+            }
+        }
+
+        vecs_splitted
     }
 }
 
@@ -85,13 +97,11 @@ where
 */
 
 impl RedundantFile {
-
     pub fn size() -> usize {
-        
         let rf = std::mem::size_of::<RedundantFile>();
         let fi = std::mem::size_of::<ChunkIndirection>();
-        let si = std::mem::size_of::<ChunkIndirection>()*FIRST_INDIRECTION_SIZE;
-        rf+fi+si+(FILENAME_SIZE as usize)
+        let si = std::mem::size_of::<ChunkIndirection>() * FIRST_INDIRECTION_SIZE;
+        rf + fi + si + (FILENAME_SIZE as usize)
     }
 
     pub fn rebuild<T, W>(id: UUID, data_manager: &T, writer: &mut W) -> Result<(), VolumeError>
@@ -185,5 +195,20 @@ impl RedundantFile {
             Box::new(chunks),
             Box::new(blocks),
         ))
+    }
+}
+
+impl Into<Vec<u8>> for RedundantFile {
+    fn into(self) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        let values: Vec<Vec<u8>> = vec![
+            self.id.to_le_bytes().to_vec(),
+            self.name.to_vec(),
+            self.chunks_fi.to_bin_vec(),
+            //   self.chunk_vector_start.to_le_bytes().to_vec()];
+            self.chunks_si.iter().flat_map(|x| x.to_bin_vec()).collect(),
+        ];
+
+        buf
     }
 }
