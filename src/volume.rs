@@ -1,8 +1,8 @@
 use crate::block::Block;
 use crate::chunk::Chunk;
-use crate::error::{ VolumeError};
+use crate::error::VolumeError;
 use crate::redundant_file::RedundantFile;
-use crate::volume_manager::{FileVolumeManager};
+use crate::volume_manager::FileVolumeManager;
 use crate::UUID;
 use std::collections::HashMap;
 
@@ -15,8 +15,8 @@ pub trait Volume {
 }
 
 pub struct BigFileVolume {
-    meta_data: Option<FileVolumeManager::MetaData>,
-    block_file: Option<FileVolumeManager::BlockFile>,
+    meta_data: Option<FileVolumeManager>,
+    block_file: Option<FileVolumeManager>,
 }
 
 pub struct BigFileVolumeHashMap<T> {
@@ -43,17 +43,15 @@ impl BigFileVolume {
     pub fn default() -> BigFileVolume {
         return BigFileVolume {
             meta_data: None,
-            block_file: "block_file.block".to_owned(),
+            block_file: None,
         };
     }
 
-    pub fn init(path: &str) -> BigFileVolume {
-        let fvm = match FileVolumeManager::open(path) {
+    pub fn init(meta_data: &str, block_file: &str) -> BigFileVolume {
+        let fvm = match FileVolumeManager::open_metadata(meta_data) {
             Ok(fvm) => fvm,
-            Err(_) => FileVolumeManager::init(path).unwrap(),
+            Err(_) => FileVolumeManager::init_metadata(meta_data).unwrap(),
         };
-
-        println!("{:#?}", fvm);
 
         let mut bfv = BigFileVolume::default();
 

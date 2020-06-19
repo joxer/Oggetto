@@ -42,6 +42,6 @@ fn main() {
             }
         }
     }
-    let mut volume = BigFileVolume::init("volume.bin");
+    let mut volume = BigFileVolume::init("volume.bin", "block.bin");
     let id = volume.destruct_from_file("tests/lenna.png").unwrap();
 }

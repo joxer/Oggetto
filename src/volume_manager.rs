@@ -8,11 +8,20 @@ use std::ops::Deref;
 const file_vector_size: usize = 16;
 
 #[derive(Debug)]
-pub struct FileVolumeManager {
-    path: String,
-    file: Option<File>,
-    super_block: SuperBlock,
-    file_vector: Vec<FileVector>,
+pub enum FileVolumeManager {
+    MetaData {
+        path: String,
+        file: Option<File>,
+        super_block: SuperBlock,
+        file_vector: Vec<FileVector>,
+    },
+
+    BlockFile {
+        path: String,
+        file: Option<File>,
+        super_block: SuperBlock,
+        chunk_vector: Vec<ChunkVector>,
+    },
 }
 
 #[repr(C)]
@@ -71,7 +80,30 @@ pub struct FileVector {
     next_file_vector: u64,
 }
 
+#[derive(Copy, Clone)]
+pub struct ChunkVector {
+    entries: [(u64, u128); file_vector_size],
+    next_file_vector: u64,
+}
+
 impl std::fmt::Debug for FileVector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileVector")
+            .field(
+                "files",
+                &self
+                    .entries
+                    .iter()
+                    .map(|t| format!("({} {})", t.0, t.1))
+                    .collect::<Vec<String>>()
+                    .join(", "),
+            )
+            .field("next_file_vector", &self.next_file_vector)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ChunkVector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FileVector")
             .field(
@@ -148,7 +180,7 @@ impl From<[u8; std::mem::size_of::<FileVector>()]> for FileVector {
 }
 
 impl FileVolumeManager {
-    pub fn init(path: &str) -> Result<FileVolumeManager, VolumeError> {
+    pub fn init_metadata(path: &str) -> Result<FileVolumeManager, VolumeError> {
         let mut file = File::create(path).map_err(VolumeError::IoError)?;
         file.set_len(u64::pow(2, 30));
         let mut bytes_representation: Vec<u8> = SuperBlock::default().into();
@@ -156,10 +188,10 @@ impl FileVolumeManager {
         bytes_representation = FileVector::default().into();
         file.write(&bytes_representation[..]);
 
-        FileVolumeManager::open(path)
+        FileVolumeManager::open_metadata(path)
     }
 
-    pub fn open(path: &str) -> Result<FileVolumeManager, VolumeError> {
+    pub fn open_metadata(path: &str) -> Result<FileVolumeManager, VolumeError> {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -174,7 +206,7 @@ impl FileVolumeManager {
         let fv: FileVector = buf_fv.into();
         let mut v_fv = Vec::new();
         v_fv.push(fv);
-        Ok(FileVolumeManager {
+        Ok(FileVolumeManager::MetaData {
             path: path.to_owned(),
             file: Some(file),
             super_block: sb,
@@ -183,68 +215,103 @@ impl FileVolumeManager {
     }
 
     pub fn sync_metadata(&mut self) -> Result<(), VolumeError> {
-        let mut seek = self.super_block.file_vector_start;
-        for b_fv in &self.file_vector {
-            let mut buf_fv = [0u8; std::mem::size_of::<FileVector>()];
-            let fv_v: Vec<u8> = b_fv.clone().into();
-            buf_fv.clone_from_slice(&fv_v[..]);
-            self.file
-                .as_mut()
-                .unwrap()
-                .seek(SeekFrom::Start(seek))
-                .map_err(VolumeError::IoError)?;
-            self.file
-                .as_mut()
-                .unwrap()
-                .write(&buf_fv[..])
-                .map_err(VolumeError::IoError)?;
-            self.file
-                .as_mut()
-                .unwrap()
-                .flush()
-                .map_err(VolumeError::IoError)?;
-            seek = b_fv.next_file_vector;
+        match self {
+            FileVolumeManager::MetaData {
+                path,
+                file,
+                super_block,
+                file_vector,
+            } => {
+                let mut seek = super_block.file_vector_start;
+                for b_fv in file_vector {
+                    let mut buf_fv = [0u8; std::mem::size_of::<FileVector>()];
+                    let fv_v: Vec<u8> = b_fv.clone().into();
+                    buf_fv.clone_from_slice(&fv_v[..]);
+                    file.as_mut()
+                        .unwrap()
+                        .seek(SeekFrom::Start(seek))
+                        .map_err(VolumeError::IoError)?;
+                    file.as_mut()
+                        .unwrap()
+                        .write(&buf_fv[..])
+                        .map_err(VolumeError::IoError)?;
+                    file.as_mut()
+                        .unwrap()
+                        .flush()
+                        .map_err(VolumeError::IoError)?;
+                    seek = b_fv.next_file_vector;
+                }
+            }
+            FileVolumeManager::BlockFile {
+                path,
+                file,
+                super_block,
+                chunk_vector,
+            } => {}
         }
         Ok(())
     }
 
     pub fn allocate_file(&mut self, id: UUID) -> Result<u64, VolumeError> {
-        let mut pos = 0;
-        let mut pos_start =
-            self.super_block.file_vector_start + (std::mem::size_of::<FileVector>() as u64);
+        match self {
+            FileVolumeManager::MetaData {
+                path,
+                file,
+                super_block,
+                file_vector,
+            } => {
+                let mut pos = 0;
+                let mut pos_start =
+                    super_block.file_vector_start + (std::mem::size_of::<FileVector>() as u64);
 
-        for file_vector in self.file_vector.iter_mut() {
-            for (n, data) in file_vector.entries.iter_mut().enumerate() {
-                if *data == (0u64, 0u128) {
-                    pos = pos_start + ((n * RedundantFile::size()) as u64);
-                    data.0 = pos;
-                    data.1 = id;
+                for file_vector in file_vector.iter_mut() {
+                    for (n, data) in file_vector.entries.iter_mut().enumerate() {
+                        if *data == (0u64, 0u128) {
+                            pos = pos_start + ((n * RedundantFile::size()) as u64);
+                            data.0 = pos;
+                            data.1 = id;
 
-                    break;
+                            break;
+                        }
+                    }
+                    pos_start = file_vector.next_file_vector;
                 }
+                return Ok(pos);
             }
-            pos_start = file_vector.next_file_vector;
+            _ => {}
         }
-        Ok(pos)
+        Ok(0u64)
     }
 
     pub fn save_file(&mut self, pos: u64, rf: RedundantFile) -> Result<(), VolumeError> {
-        let fv_v: Vec<u8> = bincode::serialize(&rf).unwrap();
-        self.file
-            .as_mut()
-            .unwrap()
-            .seek(SeekFrom::Start(pos))
-            .map_err(VolumeError::IoError)?;
-        self.file
-            .as_mut()
-            .unwrap()
-            .write(&fv_v[..])
-            .map_err(VolumeError::IoError)?;
-        self.file
-            .as_mut()
-            .unwrap()
-            .flush()
-            .map_err(VolumeError::IoError)?;
+        match self {
+            FileVolumeManager::MetaData {
+                path,
+                file,
+                super_block,
+                file_vector,
+            } => {
+                let fv_v: Vec<u8> = bincode::serialize(&rf).unwrap();
+                file.as_mut()
+                    .unwrap()
+                    .seek(SeekFrom::Start(pos))
+                    .map_err(VolumeError::IoError)?;
+                file.as_mut()
+                    .unwrap()
+                    .write(&fv_v[..])
+                    .map_err(VolumeError::IoError)?;
+                file.as_mut()
+                    .unwrap()
+                    .flush()
+                    .map_err(VolumeError::IoError)?;
+            }
+            FileVolumeManager::BlockFile {
+                path,
+                file,
+                super_block,
+                chunk_vector,
+            } => {}
+        }
         Ok(())
     }
 }
