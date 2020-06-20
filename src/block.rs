@@ -16,6 +16,12 @@ pub struct Block {
     pub crc: u32,
 }
 
+impl Default for Block {
+    fn default() -> Self {
+        Block::empty()
+    }
+}
+
 impl Debug for Block {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmtResult {
         f.debug_struct("Block")
@@ -57,6 +63,10 @@ impl Block {
             data: [0u8; BLOCK_SIZE],
             crc: 0,
         }
+    }
+
+    pub fn size() -> u64 {
+        bincode::serialized_size(&Block::empty()).unwrap()
     }
 
     pub fn inner_data_as_vec(&self) -> Option<Vec<u8>> {

@@ -110,7 +110,7 @@ impl RedundantFile {
         W: std::io::Write,
     {
         let file: Box<RedundantFile> = data_manager.get_redundant_file(id)?;
-        file.inner_rebuild(data_manager, writer);
+        file.inner_rebuild(data_manager, writer)?;
         Ok(())
     }
 
@@ -121,14 +121,14 @@ impl RedundantFile {
     {
         for c in self.chunks_fi.chunks.iter() {
             if *c != 0 {
-                Chunk::rebuild(*c, data_manager, writer);
+                Chunk::rebuild(*c, data_manager, writer)?;
             }
         }
 
         for cs in self.chunks_si.iter() {
             for c in cs.chunks.iter() {
                 if *c != 0 {
-                    Chunk::rebuild(*c, data_manager, writer);
+                    Chunk::rebuild(*c, data_manager, writer)?;
                 }
             }
         }
@@ -172,14 +172,14 @@ impl RedundantFile {
             [ChunkIndirection::default(); FIRST_INDIRECTION_SIZE];
         if chunks.len() > FIRST_INDIRECTION_SIZE {
             let missing = chunks.len() - FIRST_INDIRECTION_SIZE;
-            let missing_chunks = missing / FIRST_INDIRECTION_SIZE;
+
             let mut i = 0;
             let mut k = 0;
             for j in 0..missing {
                 chunks_si[i].chunks[k] = chunks[FIRST_INDIRECTION_SIZE + j].id;
 
                 k += 1;
-                if (k == FIRST_INDIRECTION_SIZE) {
+                if k == FIRST_INDIRECTION_SIZE {
                     i += 1;
                     k = 0;
                 }
@@ -197,7 +197,7 @@ impl RedundantFile {
         ))
     }
 }
-
+/*
 impl Into<Vec<u8>> for RedundantFile {
     fn into(self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
@@ -209,6 +209,9 @@ impl Into<Vec<u8>> for RedundantFile {
             self.chunks_si.iter().flat_map(|x| x.to_bin_vec()).collect(),
         ];
 
+
+
         buf
     }
 }
+*/

@@ -40,7 +40,39 @@ where
     seq.end()
 }*/
 
+impl Default for Chunk {
+    fn default() -> Self {
+        return Chunk {
+            id: 0,
+            position: 0,
+            chunk_n: BLOCKS,
+            parity_n: PARITY,
+            chunk_size: READ_STEP,
+            blocks: [0u128; BLOCKS + PARITY],
+            hash: 0,
+        };
+    }
+}
+
+pub fn chunk_block_serialize(chunk: &Chunk, blocks: &Vec<Block>) -> Vec<u8> {
+    let mut ret = Vec::new();
+    let mut chunk_serialized = bincode::serialize(chunk).unwrap();
+    ret.append(&mut chunk_serialized);
+    for block in blocks {
+        let mut serialized_block = bincode::serialize(block).unwrap();
+        ret.append(&mut serialized_block);
+    }
+    ret
+}
+
 impl Chunk {
+    pub fn size() -> usize {
+        let chunk_size = bincode::serialized_size(&Chunk::default()).unwrap() as usize;
+        let block_size = bincode::serialized_size(&Block::default()).unwrap() as usize;
+
+        chunk_size + block_size * (BLOCKS + PARITY)
+    }
+
     pub fn rebuild<T, W>(id: UUID, data_manager: &T, writer: &mut W) -> Result<(), VolumeError>
     where
         T: Volume,

@@ -53,9 +53,15 @@ impl BigFileVolume {
             Err(_) => FileVolumeManager::init_metadata(meta_data).unwrap(),
         };
 
+        let block = match FileVolumeManager::open_blockdata(block_file) {
+            Ok(fvm) => fvm,
+            Err(_) => FileVolumeManager::init_blockdata(block_file).unwrap(),
+        };
+
         let mut bfv = BigFileVolume::default();
 
         bfv.meta_data = Some(fvm);
+        bfv.block_file = Some(block);
 
         bfv
     }
@@ -68,47 +74,29 @@ impl BigFileVolume {
 
         let id = file.id;
         let pos = self.meta_data.as_mut().unwrap().allocate_file(id)?;
-        self.meta_data.as_mut().unwrap().sync_metadata();
+        self.meta_data.as_mut().unwrap().sync_metadata()?;
 
         self.meta_data
             .as_mut()
             .unwrap()
-            .save_file(pos, *file.clone());
+            .save_file(pos, *file.clone())?;
 
-        /*self.files.insert(file.id, file);
         for c in chunks.iter() {
-            self.chunks.insert(c.id, Box::new(*c));
+            let mut tmp = Vec::new();
+            for b in blocks.iter() {
+                if c.blocks.contains(&b.id) {
+                    tmp.push(*b);
+                }
+            }
+            let pos = self.block_file.as_mut().unwrap().allocate_file(c.id)?;
+            self.block_file.as_mut().unwrap().sync_metadata()?;
+            self.block_file.as_mut().unwrap().save_chunk(pos, *c, tmp)?;
         }
-        for b in blocks.iter() {
-            self.blocks.insert(b.id, Box::new(*b));
-        }
-        */
-        //    self.save_file(file);
-        //    self.save_chunks(chunks);
-        //    self.save_blocks(blocks);
+
 
         Ok(file.id)
     }
 
-    /*    fn save_file(&mut self, file: Box<RedundantFile>) {
-        self.write_to_file_table(&file);
-        self.write_file_block();
-    }
-
-    fn save_chunks(&mut self, chunks: Box<Vec<Chunk>>) {
-        self.write_chunks_to_file_table(&chunks);
-        self.write_chunks_block(&chunks);
-    }
-
-    fn save_blocks(&mut self, blocks: Box<Vec<Block>>) {
-        self.write_blocks_to_file_table(&blocks);
-        self.write_blocks_to_second_file(&blocks)
-    }
-
-    fn write_to_file_table(&mut self,file: Box<RedundantFile>) -> Result<(),VolumeError> {
-
-    }
-    */
 
     pub fn restruct<T>(&mut self, id: UUID, writer: &mut T) -> Result<(), VolumeError>
     where
