@@ -93,10 +93,8 @@ impl BigFileVolume {
             self.block_file.as_mut().unwrap().save_chunk(pos, *c, tmp)?;
         }
 
-
         Ok(file.id)
     }
-
 
     pub fn restruct<T>(&mut self, id: UUID, writer: &mut T) -> Result<(), VolumeError>
     where

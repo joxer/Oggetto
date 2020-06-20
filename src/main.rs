@@ -1,12 +1,8 @@
 extern crate clap;
 use clap::{App, Arg};
 
-use oggetto::block::Block;
-use oggetto::chunk::Chunk;
-use oggetto::redundant_file::{ChunkIndirection, RedundantFile};
 use oggetto::volume::{BigFileVolume, Volume};
-use oggetto::volume_manager::FileVolumeManager;
-use std::path::Path;
+
 fn main() {
     let matches = App::new("Oggetto")
         .subcommand(
@@ -28,7 +24,10 @@ fn main() {
         .get_matches();
     if let Some(ref matches) = matches.subcommand_matches("write") {
         match matches.value_of("FILE") {
-            Some(input) => {}
+            Some(input) => {
+                let mut volume = BigFileVolume::init("volume.bin", "block.bin");
+                let _id = volume.destruct_from_file(input).unwrap();
+            }
             None => {
                 println!("no file specified");
             }
@@ -36,12 +35,10 @@ fn main() {
     }
     if let Some(ref matches) = matches.subcommand_matches("read") {
         match matches.value_of("FILE") {
-            Some(input) => {}
+            Some(_input) => {}
             None => {
                 println!("no file specified");
             }
         }
     }
-    let mut volume = BigFileVolume::init("volume.bin", "block.bin");
-    let id = volume.destruct_from_file("tests/lenna.png").unwrap();
 }
